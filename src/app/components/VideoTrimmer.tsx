@@ -9,8 +9,9 @@ import { IoMdPause } from "react-icons/io";
 
 export default function VideoTrimmer() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const ffmpegRef = useRef<FFmpeg | null>(null); // Keep a reference to FFmpeg
-  const [file, setFile] = useState<File | null>(null);
+  const ffmpegRef = useRef<FFmpeg | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [processedFile, setProcessedFile] = useState<File | null>(null);
   const [duration, setDuration] = useState(0);
   const [values, setValues] = useState([0, 0]);
   const [thumbnails, setThumbnails] = useState<string[]>([]);
@@ -18,66 +19,100 @@ export default function VideoTrimmer() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const loadFFmpeg = async () => {
-    const ffmpeg = new FFmpeg();
-    await ffmpeg.load();
-    ffmpegRef.current = ffmpeg;
-  };
-
-  const handleTrim = async () => {
-    if (!file || !ffmpegRef.current) return;
-
-    setLoading(true);
-    const ffmpeg = ffmpegRef.current;
-
-    // Get original extension
-    const inputName = `input${file.name.substring(file.name.lastIndexOf("."))}`;
-    const outputName = `output${file.name.substring(
-      file.name.lastIndexOf(".")
-    )}`;
-
-    await ffmpeg.writeFile(inputName, await fetchFile(file));
-
-    // Using -c copy is fast but -c:v libx264 is more compatible for web outputs
-    await ffmpeg.exec([
-      "-i",
-      inputName,
-      "-ss",
-      values[0].toString(),
-      "-to",
-      values[1].toString(),
-      "-c",
-      "copy", // Fast trimming without re-encoding
-      outputName,
-    ]);
-
-    const data = await ffmpeg.readFile(outputName);
-    const blob = new Blob([new Uint8Array(data as Uint8Array)], {
-      type: file.type,
-    });
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `trimmed-${file.name}`;
-    a.click();
-
-    setLoading(false);
-  };
-
+  // Load FFmpeg
   useEffect(() => {
-    loadFFmpeg();
+    const load = async () => {
+      const ffmpeg = new FFmpeg();
+      await ffmpeg.load();
+      ffmpegRef.current = ffmpeg;
+    };
+    load();
   }, []);
+
+  // Convert ANY format to MP4
+  const handleFileUpload = async (file: File) => {
+    if (!ffmpegRef.current) return;
+
+    setIsUploading(true); // START upload loading
+    setLoading(true);
+
+    try {
+      const ffmpeg = ffmpegRef.current;
+
+      const inputExt =
+        file.name.substring(file.name.lastIndexOf(".")) || ".mp4";
+      const inputName = `input${inputExt}`;
+      const outputName = "converted.mp4";
+
+      await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+      await ffmpeg.exec([
+        "-i",
+        inputName,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "faststart",
+        "-pix_fmt",
+        "yuv420p",
+        "-profile:v",
+        "baseline",
+        "-level",
+        "3.0",
+        outputName,
+      ]);
+
+      const data = await ffmpeg.readFile(outputName);
+
+      const blob = new Blob([new Uint8Array(data as Uint8Array)], {
+        type: "video/mp4",
+      });
+
+      const convertedFile = new File([blob], "video.mp4", {
+        type: "video/mp4",
+      });
+
+      setProcessedFile(convertedFile);
+    } catch (error) {
+      console.error("Upload error:", error);
+    } finally {
+      setIsUploading(false); // END upload loading
+      setLoading(false);
+    }
+  };
+
+  // Generate preview URL
+  useEffect(() => {
+    if (!processedFile) return;
+
+    const url = URL.createObjectURL(processedFile);
+    setVideoUrl(url);
+
+    return () => URL.revokeObjectURL(url);
+  }, [processedFile]);
 
   // Generate thumbnails
   useEffect(() => {
-    if (!file) return;
+    if (!processedFile) return;
 
     const video = document.createElement("video");
-    const url = URL.createObjectURL(file);
+    const url = URL.createObjectURL(processedFile);
     video.src = url;
 
+    video.onerror = () => {
+      console.error("Failed to load video");
+      console.error("Video error code:", video.error);
+    };
+
     video.onloadedmetadata = async () => {
+      console.log("Metadata loaded");
+      console.log("Duration:", video.duration);
       setDuration(video.duration);
       setValues([0, video.duration]);
 
@@ -99,36 +134,13 @@ export default function VideoTrimmer() {
           };
         });
       }
+
       setThumbnails(thumbs);
       URL.revokeObjectURL(url);
     };
-  }, [file]);
+  }, [processedFile]);
 
-  // Sync Video Preview with Range Selection
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleTimeUpdate = () => {
-      if (video.currentTime >= values[1]) {
-        video.currentTime = values[0];
-        if (!video.paused) video.play();
-      }
-    };
-
-    video.addEventListener("timeupdate", handleTimeUpdate);
-    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
-  }, [values]);
-
-  // Create/Cleanup Preview URL
-  useEffect(() => {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setVideoUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
-  // Loop video playback between selected start and end times
+  // Loop playback between selected range
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -141,13 +153,9 @@ export default function VideoTrimmer() {
     };
 
     video.addEventListener("timeupdate", handleTimeUpdate);
-
-    return () => {
-      video.removeEventListener("timeupdate", handleTimeUpdate);
-    };
+    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
   }, [values]);
 
-  // For Toggling Play/Pause when clicking on the video
   const togglePlay = () => {
     if (!videoRef.current) return;
 
@@ -161,17 +169,49 @@ export default function VideoTrimmer() {
     }
   };
 
-  // Create Object URL for the selected video file
-  useEffect(() => {
-    if (!file) return;
+  // Trim MP4 → MP4
+  const handleTrim = async () => {
+    if (!processedFile || !ffmpegRef.current) return;
 
-    const url = URL.createObjectURL(file);
-    setVideoUrl(url);
+    setLoading(true);
+    const ffmpeg = ffmpegRef.current;
 
-    return () => {
-      URL.revokeObjectURL(url);
-    };
-  }, [file]);
+    await ffmpeg.writeFile("input.mp4", await fetchFile(processedFile));
+
+    await ffmpeg.exec([
+      "-ss",
+      values[0].toString(),
+      "-to",
+      values[1].toString(),
+      "-i",
+      "input.mp4",
+      "-c:v",
+      "libx264",
+      "-c:a",
+      "aac",
+      "-preset",
+      "ultrafast",
+      "-crf",
+      "23",
+      "-movflags",
+      "faststart",
+      "output.mp4",
+    ]);
+
+    const data = await ffmpeg.readFile("output.mp4");
+
+    const blob = new Blob([new Uint8Array(data as Uint8Array)], {
+      type: "video/mp4",
+    });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "trimmed-video.mp4";
+    a.click();
+
+    setLoading(false);
+  };
 
   return (
     <div style={{ padding: 30, maxWidth: 800 }}>
@@ -179,11 +219,21 @@ export default function VideoTrimmer() {
 
       <input
         type="file"
-        accept="video/*"
-        onChange={(e) => setFile(e.target.files?.[0] || null)}
+        disabled={isUploading}
+        accept="video/mp4,video/quicktime,video/x-matroska,video/webm,video/3gpp,.3gp,.3gpp,video/*"
+        onChange={(e) => {
+          const selected = e.target.files?.[0];
+          if (selected) handleFileUpload(selected);
+        }}
       />
 
-      {file && duration > 0 && (
+      {isUploading && (
+        <div className="mt-4 text-orange-500 font-semibold">
+          Video Uploading... Please wait..
+        </div>
+      )}
+
+      {processedFile && duration > 0 && (
         <>
           <div className="relative group mt-5">
             <video
@@ -197,12 +247,11 @@ export default function VideoTrimmer() {
               onEnded={() => setIsPlaying(false)}
             />
 
-            {/* Overlay Play/Pause Button */}
             <button
               onClick={togglePlay}
               className="absolute inset-0 flex items-center justify-center 
-               bg-black/30 opacity-0 group-hover:opacity-100 
-               transition-opacity duration-300 cursor-pointer"
+              bg-black/30 opacity-0 group-hover:opacity-100 
+              transition-opacity duration-300 cursor-pointer"
             >
               <div className="bg-white/90 rounded-full p-4 shadow-lg">
                 {isPlaying ? (
@@ -214,7 +263,6 @@ export default function VideoTrimmer() {
             </button>
           </div>
 
-          {/* Thumbnail Strip */}
           <div className="relative">
             <div className="flex overflow-hidden mt-5 rounded-lg pointer-events-none">
               {thumbnails.map((thumb, i) => (
@@ -226,7 +274,6 @@ export default function VideoTrimmer() {
               ))}
             </div>
 
-            {/* Timeline Slider */}
             <div className="absolute top-0 z-50 left-0 right-0 h-full w-full overflow-hidden rounded-lg">
               <Range
                 step={0.1}
@@ -242,7 +289,6 @@ export default function VideoTrimmer() {
                 renderTrack={({ props, children }) => {
                   const trackProps = props as any;
                   const { key, ...rest } = trackProps;
-
                   const startPercent = (values[0] / duration) * 100;
                   const endPercent = (values[1] / duration) * 100;
 
@@ -250,29 +296,20 @@ export default function VideoTrimmer() {
                     <div
                       key={key}
                       {...rest}
+                      {...props}
                       className="relative h-full w-full"
-                      style={{
-                        ...(rest.style || {}),
-                      }}
                     >
-                      {/* LEFT OVERLAY */}
                       <div
-                        className="absolute top-0 h-full bg-black/70 pointer-events-none"
-                        style={{
-                          width: `${startPercent}%`,
-                        }}
+                        className="absolute top-0 h-full bg-black/70"
+                        style={{ width: `${startPercent}%` }}
                       />
-
-                      {/* RIGHT OVERLAY */}
                       <div
-                        className="absolute top-0 h-full bg-black/70 pointer-events-none"
+                        className="absolute top-0 h-full bg-black/70"
                         style={{
                           left: `${endPercent}%`,
                           width: `${100 - endPercent}%`,
                         }}
                       />
-
-                      {/* Children = thumbs */}
                       {children}
                     </div>
                   );
@@ -280,14 +317,11 @@ export default function VideoTrimmer() {
                 renderThumb={({ props }) => {
                   const thumbProps = props as any;
                   const { key, ...rest } = thumbProps;
-
                   return (
                     <div
                       key={key}
                       {...rest}
-                      style={{
-                        ...(rest.style || {}),
-                      }}
+                      style={{ ...(rest.style || {}) }}
                       className="h-full w-2 bg-orange-500"
                     />
                   );
