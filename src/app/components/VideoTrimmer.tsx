@@ -6,10 +6,12 @@ import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile } from "@ffmpeg/util";
 import { FaPlay } from "react-icons/fa6";
 import { IoMdPause } from "react-icons/io";
+import ProgressBar from "@ramonak/react-progress-bar";
 
 export default function VideoTrimmer() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const ffmpegRef = useRef<FFmpeg | null>(null);
+
   const [isUploading, setIsUploading] = useState(false);
   const [processedFile, setProcessedFile] = useState<File | null>(null);
   const [duration, setDuration] = useState(0);
@@ -19,15 +21,25 @@ export default function VideoTrimmer() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [progress, setProgress] = useState(0);
 
+  useEffect(() => {
+    const load = async () => {
+      const ffmpeg = new FFmpeg();
+      await ffmpeg.load();
+      ffmpegRef.current = ffmpeg;
+    };
+    load();
+  }, []);
+
+  // Single timeupdate listener (loop + playhead)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const handleTimeUpdate = () => {
-      setCurrentTime(video.currentTime); // Update playhead position
+      setCurrentTime(video.currentTime);
 
-      // Handle Looping logic
       if (video.currentTime >= values[1]) {
         video.currentTime = values[0];
         if (!video.paused) video.play();
@@ -38,28 +50,28 @@ export default function VideoTrimmer() {
     return () => video.removeEventListener("timeupdate", handleTimeUpdate);
   }, [values]);
 
-  // Load FFmpeg
-  useEffect(() => {
-    const load = async () => {
-      const ffmpeg = new FFmpeg();
-      await ffmpeg.load();
-      ffmpegRef.current = ffmpeg;
-    };
-    load();
-  }, []);
-
-  // Convert ANY format to MP4
+  // Optimized Upload + Conversion
   const handleFileUpload = async (file: File) => {
     if (!ffmpegRef.current) return;
 
-    setIsUploading(true); // START upload loading
+    setIsUploading(true);
     setLoading(true);
 
+    const ffmpeg = ffmpegRef.current;
+
+    ffmpeg.on("progress", ({ progress }) => {
+      setProgress(progress);
+    });
+
     try {
-      const ffmpeg = ffmpegRef.current;
+      if (file.type === "video/mp4") {
+        setProcessedFile(file);
+        return;
+      }
 
       const inputExt =
         file.name.substring(file.name.lastIndexOf(".")) || ".mp4";
+
       const inputName = `input${inputExt}`;
       const outputName = "converted.mp4";
 
@@ -68,22 +80,26 @@ export default function VideoTrimmer() {
       await ffmpeg.exec([
         "-i",
         inputName,
+        "-fflags",
+        "+genpts",
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a?",
         "-c:v",
         "libx264",
         "-preset",
         "ultrafast",
         "-crf",
-        "23",
-        "-c:a",
-        "aac",
-        "-movflags",
-        "faststart",
+        "28",
         "-pix_fmt",
         "yuv420p",
-        "-profile:v",
-        "baseline",
-        "-level",
-        "3.0",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "faststart",
         outputName,
       ]);
 
@@ -99,14 +115,14 @@ export default function VideoTrimmer() {
 
       setProcessedFile(convertedFile);
     } catch (error) {
-      console.error("Upload error:", error);
+      console.error("Conversion failed:", error);
     } finally {
-      setIsUploading(false); // END upload loading
+      setIsUploading(false);
       setLoading(false);
     }
   };
 
-  // Generate preview URL
+  // Create preview URL
   useEffect(() => {
     if (!processedFile) return;
 
@@ -124,14 +140,7 @@ export default function VideoTrimmer() {
     const url = URL.createObjectURL(processedFile);
     video.src = url;
 
-    video.onerror = () => {
-      console.error("Failed to load video");
-      console.error("Video error code:", video.error);
-    };
-
     video.onloadedmetadata = async () => {
-      console.log("Metadata loaded");
-      console.log("Duration:", video.duration);
       setDuration(video.duration);
       setValues([0, video.duration]);
 
@@ -159,25 +168,8 @@ export default function VideoTrimmer() {
     };
   }, [processedFile]);
 
-  // Loop playback between selected range
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleTimeUpdate = () => {
-      if (video.currentTime >= values[1]) {
-        video.currentTime = values[0];
-        video.play();
-      }
-    };
-
-    video.addEventListener("timeupdate", handleTimeUpdate);
-    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
-  }, [values]);
-
   const togglePlay = () => {
     if (!videoRef.current) return;
-
     const video = videoRef.current;
 
     if (video.paused) {
@@ -188,7 +180,7 @@ export default function VideoTrimmer() {
     }
   };
 
-  // Trim MP4 → MP4
+  // Optimized Trim (FAST SEEK)
   const handleTrim = async () => {
     if (!processedFile || !ffmpegRef.current) return;
 
@@ -199,21 +191,13 @@ export default function VideoTrimmer() {
 
     await ffmpeg.exec([
       "-ss",
-      values[0].toString(),
-      "-to",
-      values[1].toString(),
+      values[0].toString(), // Seek BEFORE input (faster)
       "-i",
       "input.mp4",
-      "-c:v",
-      "libx264",
-      "-c:a",
-      "aac",
-      "-preset",
-      "ultrafast",
-      "-crf",
-      "23",
-      "-movflags",
-      "faststart",
+      "-t",
+      (values[1] - values[0]).toString(),
+      "-c",
+      "copy", // No re-encode
       "output.mp4",
     ]);
 
@@ -222,6 +206,7 @@ export default function VideoTrimmer() {
     const blob = new Blob([new Uint8Array(data as Uint8Array)], {
       type: "video/mp4",
     });
+
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
@@ -248,7 +233,20 @@ export default function VideoTrimmer() {
 
       {isUploading && (
         <div className="mt-4 text-orange-500 font-semibold">
-          Video Uploading... Please wait..
+          Processing video... Please wait..
+        </div>
+      )}
+
+      {loading && (
+        <div className="mt-4">
+          <ProgressBar
+            completed={Math.round(progress * 100)}
+            bgColor="#f97316"
+            height="12px"
+            isLabelVisible={true}
+            labelAlignment="outside"
+            labelClassName="text-sm ml-2 w-[20px]"
+          />
         </div>
       )}
 
@@ -270,7 +268,7 @@ export default function VideoTrimmer() {
               onClick={togglePlay}
               className="absolute inset-0 flex items-center justify-center 
               bg-black/30 opacity-0 group-hover:opacity-100 
-              transition-opacity duration-300 cursor-pointer"
+              transition-opacity duration-300"
             >
               <div className="bg-white/90 rounded-full p-4 shadow-lg">
                 {isPlaying ? (
@@ -317,13 +315,13 @@ export default function VideoTrimmer() {
                       )}
                     </div>
                   );
-                }
+                },
               )}
             </div>
 
             {/* MOVING PLAYHEAD (Auto-run seek) */}
             <div
-              className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_5px_rgba(0,0,0,0.5)] z-[60] pointer-events-none"
+              className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_5px_rgba(0,0,0,0.5)] z-60 pointer-events-none"
               style={{
                 left: `${(currentTime / duration) * 100}%`,
                 transition: isPlaying ? "none" : "left 0.1s ease-out", // Smooth transition when paused/seeking
@@ -397,7 +395,7 @@ export default function VideoTrimmer() {
             </div>
           </div>
 
-          <div className="mt-2.5">
+          <div className="mt-3">
             <strong>
               {values[0].toFixed(1)}s - {values[1].toFixed(1)}s
             </strong>
