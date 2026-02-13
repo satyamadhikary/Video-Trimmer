@@ -18,6 +18,25 @@ export default function VideoTrimmer() {
   const [loading, setLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleTimeUpdate = () => {
+      setCurrentTime(video.currentTime); // Update playhead position
+
+      // Handle Looping logic
+      if (video.currentTime >= values[1]) {
+        video.currentTime = values[0];
+        if (!video.paused) video.play();
+      }
+    };
+
+    video.addEventListener("timeupdate", handleTimeUpdate);
+    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
+  }, [values]);
 
   // Load FFmpeg
   useEffect(() => {
@@ -264,6 +283,55 @@ export default function VideoTrimmer() {
           </div>
 
           <div className="relative">
+            <div className="relative w-full h-8 mt-6 flex items-end">
+              {Array.from({ length: Math.floor(duration / 2) + 1 }).map(
+                (_, i) => {
+                  const currentTime = i * 2;
+                  const isMajorTick = currentTime % 10 === 0;
+                  const leftPercent = (currentTime / duration) * 100;
+
+                  // Don't render if it exceeds the actual video duration
+                  if (currentTime > duration) return null;
+
+                  return (
+                    <div
+                      key={i}
+                      className="absolute flex flex-col items-center"
+                      style={{
+                        left: `${leftPercent}%`,
+                        transform: "translateX(-50%)",
+                      }}
+                    >
+                      {isMajorTick ? (
+                        <>
+                          <span className="text-[10px] text-gray-400 font-bold mb-1">
+                            {currentTime}s
+                          </span>
+                          <div className="w-0.5 h-2 bg-gray-400"></div>
+                        </>
+                      ) : (
+                        <div className="mb-1">
+                          {/* Small dot for 2s, 4s, 6s, 8s marks */}
+                          <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+              )}
+            </div>
+
+            {/* MOVING PLAYHEAD (Auto-run seek) */}
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_5px_rgba(0,0,0,0.5)] z-[60] pointer-events-none"
+              style={{
+                left: `${(currentTime / duration) * 100}%`,
+                transition: isPlaying ? "none" : "left 0.1s ease-out", // Smooth transition when paused/seeking
+              }}
+            >
+              {/* Optional: Small triangle/handle at the top of playhead */}
+              <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-white rotate-45" />
+            </div>
             <div className="flex overflow-hidden mt-5 rounded-lg pointer-events-none">
               {thumbnails.map((thumb, i) => (
                 <img
@@ -273,7 +341,6 @@ export default function VideoTrimmer() {
                 />
               ))}
             </div>
-
             <div className="absolute top-0 z-50 left-0 right-0 h-full w-full overflow-hidden rounded-lg">
               <Range
                 step={0.1}
