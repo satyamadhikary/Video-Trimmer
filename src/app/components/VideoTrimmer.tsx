@@ -9,6 +9,7 @@ import { IoMdPause } from "react-icons/io";
 
 export default function VideoTrimmer() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const ffmpegRef = useRef<FFmpeg | null>(null); // Keep a reference to FFmpeg
   const [file, setFile] = useState<File | null>(null);
   const [duration, setDuration] = useState(0);
   const [values, setValues] = useState([0, 0]);
@@ -17,52 +18,64 @@ export default function VideoTrimmer() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Handle video trimming and downloading
-  const handleTrim = async () => {
-    if (!file) return;
-
-    setLoading(true);
-
+  const loadFFmpeg = async () => {
     const ffmpeg = new FFmpeg();
     await ffmpeg.load();
+    ffmpegRef.current = ffmpeg;
+  };
 
-    await ffmpeg.writeFile("input.mp4", await fetchFile(file));
+  const handleTrim = async () => {
+    if (!file || !ffmpegRef.current) return;
 
+    setLoading(true);
+    const ffmpeg = ffmpegRef.current;
+
+    // Get original extension
+    const inputName = `input${file.name.substring(file.name.lastIndexOf("."))}`;
+    const outputName = `output${file.name.substring(
+      file.name.lastIndexOf(".")
+    )}`;
+
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    // Using -c copy is fast but -c:v libx264 is more compatible for web outputs
     await ffmpeg.exec([
       "-i",
-      "input.mp4",
+      inputName,
       "-ss",
       values[0].toString(),
       "-to",
       values[1].toString(),
       "-c",
-      "copy",
-      "output.mp4",
+      "copy", // Fast trimming without re-encoding
+      outputName,
     ]);
 
-    const data = await ffmpeg.readFile("output.mp4");
-
+    const data = await ffmpeg.readFile(outputName);
     const blob = new Blob([new Uint8Array(data as Uint8Array)], {
-      type: "video/mp4",
+      type: file.type,
     });
 
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
     a.href = url;
-    a.download = "trimmed-video.mp4";
+    a.download = `trimmed-${file.name}`;
     a.click();
 
     setLoading(false);
   };
+
+  useEffect(() => {
+    loadFFmpeg();
+  }, []);
 
   // Generate thumbnails
   useEffect(() => {
     if (!file) return;
 
     const video = document.createElement("video");
-    video.src = URL.createObjectURL(file);
-    video.crossOrigin = "anonymous";
+    const url = URL.createObjectURL(file);
+    video.src = url;
 
     video.onloadedmetadata = async () => {
       setDuration(video.duration);
@@ -74,22 +87,45 @@ export default function VideoTrimmer() {
       canvas.height = 90;
 
       const thumbs: string[] = [];
-      const interval = video.duration / 8; // 8 thumbnails
+      const interval = video.duration / 8;
 
       for (let i = 0; i < 8; i++) {
         video.currentTime = i * interval;
-
         await new Promise((res) => {
           video.onseeked = () => {
             ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-            thumbs.push(canvas.toDataURL());
+            thumbs.push(canvas.toDataURL("image/jpeg"));
             res(null);
           };
         });
       }
-
       setThumbnails(thumbs);
+      URL.revokeObjectURL(url);
     };
+  }, [file]);
+
+  // Sync Video Preview with Range Selection
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleTimeUpdate = () => {
+      if (video.currentTime >= values[1]) {
+        video.currentTime = values[0];
+        if (!video.paused) video.play();
+      }
+    };
+
+    video.addEventListener("timeupdate", handleTimeUpdate);
+    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
+  }, [values]);
+
+  // Create/Cleanup Preview URL
+  useEffect(() => {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setVideoUrl(url);
+    return () => URL.revokeObjectURL(url);
   }, [file]);
 
   // Loop video playback between selected start and end times
