@@ -23,6 +23,9 @@ export default function VideoTrimmer() {
   const [currentTime, setCurrentTime] = useState(0);
   const [progress, setProgress] = useState(0);
 
+  const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     const load = async () => {
       const ffmpeg = new FFmpeg();
@@ -172,8 +175,11 @@ export default function VideoTrimmer() {
     if (!videoRef.current) return;
     const video = videoRef.current;
 
-    if (video.paused) {
+    if (video.currentTime < values[0] || video.currentTime > values[1]) {
       video.currentTime = values[0];
+    }
+
+    if (video.paused) {
       video.play();
     } else {
       video.pause();
@@ -216,6 +222,42 @@ export default function VideoTrimmer() {
 
     setLoading(false);
   };
+
+  const updateTimeFromPosition = (clientX: number) => {
+    if (!timelineRef.current || !videoRef.current) return;
+
+    const rect = timelineRef.current.getBoundingClientRect();
+    const offsetX = clientX - rect.left;
+    const percentage = Math.min(Math.max(offsetX / rect.width, 0), 1);
+
+    // Map percentage to video time
+    let newTime = percentage * duration;
+
+    // Clamp to trim range
+    newTime = Math.max(values[0], Math.min(newTime, values[1]));
+
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingPlayhead) return;
+      updateTimeFromPosition(e.clientX);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingPlayhead(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDraggingPlayhead, duration]);
 
   return (
     <div style={{ padding: 30, maxWidth: 800 }}>
@@ -280,8 +322,8 @@ export default function VideoTrimmer() {
             </button>
           </div>
 
-          <div className="relative">
-            <div className="relative w-full h-8 mt-6 flex items-end">
+          <div ref={timelineRef} className="relative pointer-events-none">
+            <div className="relative w-full h-8 mt-6 flex items-end pointer-events-none select-none">
               {Array.from({ length: Math.floor(duration / 2) + 1 }).map(
                 (_, i) => {
                   const currentTime = i * 2;
@@ -319,23 +361,30 @@ export default function VideoTrimmer() {
               )}
             </div>
 
-            {/* MOVING PLAYHEAD (Auto-run seek) */}
+            {/* MOVING PLAYHEAD */}
             <div
-              className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_5px_rgba(0,0,0,0.5)] z-60 pointer-events-none"
+              onMouseDown={(e) => {
+                setIsDraggingPlayhead(true);
+                updateTimeFromPosition(e.clientX);
+              }}
+              className="absolute top-0 bottom-0 w-0.5 bg-white 
+             shadow-[0_0_5px_rgba(0,0,0,0.5)] 
+             z-60 cursor-ew-resize pointer-events-auto"
               style={{
                 left: `${(currentTime / duration) * 100}%`,
-                transition: isPlaying ? "none" : "left 0.1s ease-out", // Smooth transition when paused/seeking
+                transition: isDraggingPlayhead ? "none" : "left 0.1s ease-out",
               }}
             >
-              {/* Optional: Small triangle/handle at the top of playhead */}
               <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-white rotate-45" />
             </div>
-            <div className="flex overflow-hidden mt-5 rounded-lg pointer-events-none">
+
+            <div className="flex overflow-hidden mt-5 rounded-lg">
               {thumbnails.map((thumb, i) => (
                 <img
                   key={i}
                   src={thumb}
-                  className="w-[12.5%] object-cover pointer-events-none"
+                  className="w-[12.5%] object-cover select-none pointer-events-none"
+                  draggable={false}
                 />
               ))}
             </div>
@@ -387,7 +436,7 @@ export default function VideoTrimmer() {
                       key={key}
                       {...rest}
                       style={{ ...(rest.style || {}) }}
-                      className="h-full w-2 bg-orange-500"
+                      className="h-full w-2 bg-orange-500 pointer-events-auto"
                     />
                   );
                 }}
