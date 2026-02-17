@@ -9,23 +9,62 @@ import { formatTime, getTimelineSteps } from "./ui/formattime";
 import Image from "next/image";
 
 const videoSources = [
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part2(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part3(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part4(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part2(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part3(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part4(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part2(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part3(split-video.com).mp4",
-  "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part4(split-video.com).mp4",
-  //   "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
-  //   "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part2(split-video.com).mp4",
-  //   "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part3(split-video.com).mp4",
-  //   "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part4(split-video.com).mp4",
+  {
+    id: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
+    rtspUrl: "rtsp://rtspstream:1ol_d1v5ku3c6R6IbmeCC@zephyr.rtsp.stream/movie",
+    status: "RUNNING",
+    createdAt: "2026-02-16T10:32:18.142Z",
+    chunks: [
+      {
+        id: "96849ba8-7791-4a95-aa5f-3d4a99cfe35e",
+        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
+        filePath:
+          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
+        duration: 60,
+        sizeBytes: 67046,
+        createdAt: "2026-02-16T10:32:28.533Z",
+      },
+      {
+        id: "dc219123-d69d-43aa-bf2a-378462b743d0",
+        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
+        filePath:
+          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part2(split-video.com).mp4",
+        duration: 60,
+        sizeBytes: 843882,
+        createdAt: "2026-02-16T10:34:03.636Z",
+      },
+      {
+        id: "34f1ef88-c51f-422c-9ec3-f5f2b90d4161",
+        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
+        filePath:
+          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part3(split-video.com).mp4",
+        duration: 60,
+        sizeBytes: 958510,
+        createdAt: "2026-02-16T10:35:34.132Z",
+      },
+      {
+        id: "229f90b7-e8f7-41b2-bf59-4c7eee74491d",
+        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
+        filePath:
+          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part4(split-video.com).mp4",
+        duration: 60,
+        sizeBytes: 2333267,
+        createdAt: "2026-02-16T10:37:24.402Z",
+      },
+      {
+        id: "da0631f5-8eb9-4134-be4d-4a22ce93ecd0",
+        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
+        filePath:
+          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
+        duration: 60,
+        sizeBytes: 1716194,
+        createdAt: "2026-02-16T10:38:44.598Z",
+      },
+    ],
+  },
 ];
+
+const allChunks = videoSources.flatMap((v) => v.chunks);
 
 export default function VideoMerge() {
   const ffmpegRef = useRef<FFmpeg | null>(null);
@@ -81,7 +120,10 @@ export default function VideoMerge() {
     const loadDurations = async () => {
       const loaded: number[] = [];
 
-      for (let src of videoSources) {
+      for (let src of videoSources
+        .map((v) => v.chunks)
+        .flat()
+        .map((c) => c.filePath)) {
         const video = document.createElement("video");
         video.src = src;
         video.preload = "metadata";
@@ -169,10 +211,10 @@ export default function VideoMerge() {
   useEffect(() => {
     const nextIndex = currentIndex + 1;
 
-    if (nextIndex >= videoSources.length) return;
+    if (nextIndex >= allChunks.length) return;
 
     const preloadVideo = document.createElement("video");
-    preloadVideo.src = videoSources[nextIndex];
+    preloadVideo.src = allChunks[nextIndex].filePath;
     preloadVideo.preload = "auto";
     preloadVideo.muted = true;
 
@@ -229,9 +271,9 @@ export default function VideoMerge() {
     const generateAll = async () => {
       setThumbnails([]);
 
-      videoSources.forEach((src) => {
-        generateThumbnailsForVideo(src);
-      });
+      for (const chunk of allChunks) {
+        await generateThumbnailsForVideo(chunk.filePath);
+      }
     };
 
     generateAll();
@@ -300,7 +342,7 @@ export default function VideoMerge() {
     const segmentFiles: string[] = [];
 
     // 🔹 TRIM PHASE
-    for (let i = 0; i < videoSources.length; i++) {
+    for (let i = 0; i < allChunks.length; i++) {
       const videoStartGlobal = accumulated;
       const videoEndGlobal = accumulated + durations[i];
 
@@ -314,7 +356,10 @@ export default function VideoMerge() {
         const inputName = `input${i}.mp4`;
         const outputName = `segment${segmentIndex}.mp4`;
 
-        await ffmpeg.writeFile(inputName, await fetchFile(videoSources[i]));
+        await ffmpeg.writeFile(
+          inputName,
+          await fetchFile(allChunks[i].filePath),
+        );
 
         await ffmpeg.exec([
           "-ss",
@@ -387,21 +432,21 @@ export default function VideoMerge() {
           <div className="relative group mt-5 h-125">
             <video
               ref={videoRef}
-              src={videoSources[currentIndex]}
+              src={allChunks[currentIndex]?.filePath}
               width="100%"
               playsInline
               className="w-full rounded-lg h-125 object-cover"
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               onEnded={() => {
-                if (currentIndex < videoSources.length - 1) {
+                if (currentIndex < allChunks.length - 1) {
                   const nextIndex = currentIndex + 1;
 
-                  isSwitchingVideoRef.current = true; // block playhead updates
+                  isSwitchingVideoRef.current = true;
                   setCurrentIndex(nextIndex);
 
                   const handleNextVideoLoaded = () => {
-                    isSwitchingVideoRef.current = false; // release lock
+                    isSwitchingVideoRef.current = false;
                     videoRef.current?.play().catch(() => {});
                     videoRef.current?.removeEventListener(
                       "loadeddata",
