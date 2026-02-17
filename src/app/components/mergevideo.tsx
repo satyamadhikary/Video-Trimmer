@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Range } from "react-range";
 import { FaPlay } from "react-icons/fa6";
 import { IoMdPause } from "react-icons/io";
-import { formatTime, getTimelineSteps } from "./ui/formattime";
+import { formatClockTime, formatTime } from "./ui/formattime";
 import Image from "next/image";
 
 const videoSources = [
@@ -83,6 +83,7 @@ export default function VideoMerge() {
   const preloadRef = useRef<HTMLVideoElement | null>(null);
   const isSwitchingVideoRef = useRef(false);
 
+  // Load FFmpeg.wasm once on component mount
   useEffect(() => {
     const load = async () => {
       const ffmpeg = new FFmpeg();
@@ -92,30 +93,7 @@ export default function VideoMerge() {
     load();
   }, []);
 
-  const cleanupFiles = async (segmentFiles: string[], videoCount: number) => {
-    const ffmpeg = ffmpegRef.current!;
-
-    for (const file of segmentFiles) {
-      try {
-        await ffmpeg.deleteFile(file);
-      } catch {}
-    }
-
-    for (let i = 0; i < videoCount; i++) {
-      try {
-        await ffmpeg.deleteFile(`input${i}.mp4`);
-      } catch {}
-    }
-
-    try {
-      await ffmpeg.deleteFile("concat.txt");
-    } catch {}
-    try {
-      await ffmpeg.deleteFile("final.mp4");
-    } catch {}
-  };
-
-  // Load Durations
+  // Load Video Durations (Metadata Only)
   useEffect(() => {
     const loadDurations = async () => {
       const loaded: number[] = [];
@@ -146,86 +124,7 @@ export default function VideoMerge() {
     loadDurations();
   }, []);
 
-  // Global Seek
-  const seekToGlobalTime = (time: number, isManual = false) => {
-    let accumulated = 0;
-
-    for (let i = 0; i < durations.length; i++) {
-      if (time < accumulated + durations[i]) {
-        if (!isManual) isSwitchingVideoRef.current = true; // block auto-switch
-
-        setCurrentIndex(i);
-
-        requestAnimationFrame(() => {
-          if (videoRef.current) {
-            videoRef.current.currentTime = time - accumulated;
-          }
-          if (!isManual) isSwitchingVideoRef.current = false; // release after auto seek
-        });
-
-        break;
-      }
-      accumulated += durations[i];
-    }
-  };
-
-  // Time Update of Seekbar
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || durations.length === 0) return;
-
-    const handleTimeUpdate = () => {
-      if (isSwitchingVideoRef.current) return;
-
-      const before = durations
-        .slice(0, currentIndex)
-        .reduce((sum, d) => sum + d, 0);
-
-      const global = before + video.currentTime;
-      setCurrentTime(global);
-
-      if (global >= values[1]) {
-        seekToGlobalTime(values[0]);
-      }
-    };
-
-    video.addEventListener("timeupdate", handleTimeUpdate);
-    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
-  }, [currentIndex, durations, values]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleLoaded = () => {
-      if (wasPlayingRef.current) {
-        video.play().catch(() => {});
-      }
-    };
-
-    video.addEventListener("loadeddata", handleLoaded);
-    return () => video.removeEventListener("loadeddata", handleLoaded);
-  }, [currentIndex]);
-
-  // Preload the next video of the index
-  useEffect(() => {
-    const nextIndex = currentIndex + 1;
-
-    if (nextIndex >= allChunks.length) return;
-
-    const preloadVideo = document.createElement("video");
-    preloadVideo.src = allChunks[nextIndex].filePath;
-    preloadVideo.preload = "auto";
-    preloadVideo.muted = true;
-
-    preloadRef.current = preloadVideo;
-
-    return () => {
-      preloadRef.current = null;
-    };
-  }, [currentIndex]);
-
-  // Thumbnail Genertion Function
+  // Thumbnail Generation
   useEffect(() => {
     if (durations.length === 0) return;
 
@@ -283,6 +182,91 @@ export default function VideoMerge() {
     };
   }, [durations]);
 
+  // Global Seek
+  const seekToGlobalTime = (time: number, isManual = false) => {
+    let accumulated = 0;
+
+    for (let i = 0; i < durations.length; i++) {
+      if (time < accumulated + durations[i]) {
+        if (!isManual) isSwitchingVideoRef.current = true; // block auto-switch
+
+        setCurrentIndex(i);
+
+        requestAnimationFrame(() => {
+          if (videoRef.current) {
+            videoRef.current.currentTime = time - accumulated;
+          }
+          if (!isManual) isSwitchingVideoRef.current = false; // release after auto seek
+        });
+
+        break;
+      }
+      accumulated += durations[i];
+    }
+  };
+
+  // Time Tracking Loop of Seekbar
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || durations.length === 0) return;
+
+    let animationFrameId: number;
+
+    const update = () => {
+      if (!isSwitchingVideoRef.current) {
+        const before = durations
+          .slice(0, currentIndex)
+          .reduce((sum, d) => sum + d, 0);
+
+        const global = before + video.currentTime;
+        setCurrentTime(global);
+
+        if (global >= values[1]) {
+          seekToGlobalTime(values[0]);
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(update);
+    };
+
+    animationFrameId = requestAnimationFrame(update);
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [currentIndex, durations, values]);
+
+  // Auto Resume When Switching Video
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleLoaded = () => {
+      if (wasPlayingRef.current) {
+        video.play().catch(() => {});
+      }
+    };
+
+    video.addEventListener("loadeddata", handleLoaded);
+    return () => video.removeEventListener("loadeddata", handleLoaded);
+  }, [currentIndex]);
+
+  // Preload the next video of the index
+  useEffect(() => {
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex >= allChunks.length) return;
+
+    const preloadVideo = document.createElement("video");
+    preloadVideo.src = allChunks[nextIndex].filePath;
+    preloadVideo.preload = "auto";
+    preloadVideo.muted = true;
+
+    preloadRef.current = preloadVideo;
+
+    return () => {
+      preloadRef.current = null;
+    };
+  }, [currentIndex]);
+
   // Play pause toggle function
   const togglePlay = () => {
     if (!videoRef.current) return;
@@ -310,6 +294,7 @@ export default function VideoMerge() {
     seekToGlobalTime(newTime, true);
   };
 
+  // Mouse move and up listeners for dragging playhead
   useEffect(() => {
     const handleMove = (e: MouseEvent) => {
       if (!isDraggingPlayhead) return;
@@ -326,6 +311,30 @@ export default function VideoMerge() {
       window.removeEventListener("mouseup", handleUp);
     };
   }, [isDraggingPlayhead, totalDuration, values]);
+
+  // FFmpeg Cleanup Helper
+  const cleanupFiles = async (segmentFiles: string[], videoCount: number) => {
+    const ffmpeg = ffmpegRef.current!;
+
+    for (const file of segmentFiles) {
+      try {
+        await ffmpeg.deleteFile(file);
+      } catch {}
+    }
+
+    for (let i = 0; i < videoCount; i++) {
+      try {
+        await ffmpeg.deleteFile(`input${i}.mp4`);
+      } catch {}
+    }
+
+    try {
+      await ffmpeg.deleteFile("concat.txt");
+    } catch {}
+    try {
+      await ffmpeg.deleteFile("final.mp4");
+    } catch {}
+  };
 
   // Merge, trim and download using (FFMPEG)
   const handleTrimAndMerge = async () => {
@@ -462,12 +471,6 @@ export default function VideoMerge() {
               }}
             />
 
-            {/* {isLoading && (
-              <div className="mt-4 text-orange-500 font-semibold">
-                Processing video... Please wait..
-              </div>
-            )} */}
-
             <button
               onClick={togglePlay}
               className="absolute inset-0 flex items-center justify-center 
@@ -486,47 +489,65 @@ export default function VideoMerge() {
 
           {/* TIMELINE */}
           <div ref={timelineRef} className="relative mt-6 pointer-events-none">
-            <div className="relative w-full h-8 mt-6 flex items-end pointer-events-none select-none">
+            <div className="relative w-full h-5 mt-10 pointer-events-none select-none">
               {(() => {
-                const { minorStep, majorStep } =
-                  getTimelineSteps(totalDuration);
+                let accumulated = 0;
+                const elements: React.ReactNode[] = [];
 
-                const totalTicks = Math.floor(totalDuration / minorStep) + 1;
+                allChunks.forEach((chunk, i) => {
+                  const startTime = accumulated;
+                  const duration = durations[i] || 0;
+                  const endTime = startTime + duration;
 
-                return Array.from({ length: totalTicks }).map((_, i) => {
-                  const currentTickTime = i * minorStep;
+                  const leftPercent = (startTime / totalDuration) * 100;
+                  const timeLabel = formatClockTime(chunk.createdAt);
 
-                  if (currentTickTime > totalDuration) return null;
-
-                  const isMajorTick = currentTickTime % majorStep === 0;
-                  const leftPercent = (currentTickTime / totalDuration) * 100;
-
-                  return (
+                  elements.push(
                     <div
-                      key={i}
+                      key={`major-${chunk.id}`}
                       className="absolute flex flex-col items-center"
                       style={{
                         left: `${leftPercent}%`,
                         transform: "translateX(-50%)",
                       }}
                     >
-                      {isMajorTick ? (
-                        <>
-                          <span className="text-[10px] text-gray-400 font-bold mb-1">
-                            {formatTime(currentTickTime)}
-                          </span>
-                          <div className="w-0.5 h-2 bg-gray-400"></div>
-                        </>
-                      ) : (
-                        <div className="mb-1">
-                          <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
-                        </div>
-                      )}
-                    </div>
+                      <span className="text-[10px] text-gray-400 font-bold mb-1">
+                        {timeLabel}
+                      </span>
+                      <div className="w-0.5 h-2 bg-gray-400"></div>
+                    </div>,
                   );
+
+                  const minuteStep = 60;
+
+                  for (
+                    let t = startTime + minuteStep;
+                    t < endTime;
+                    t += minuteStep
+                  ) {
+                    const percent = (t / totalDuration) * 100;
+
+                    elements.push(
+                      <div
+                        key={`minor-${chunk.id}-${t}`}
+                        className="absolute"
+                        style={{
+                          left: `${percent}%`,
+                          transform: "translateX(-50%)",
+                        }}
+                      >
+                        <div className="w-1 h-1 bg-gray-300 rounded-full mt-3"></div>
+                      </div>,
+                    );
+                  }
+
+                  accumulated = endTime;
                 });
+
+                return elements;
               })()}
             </div>
+
             {/* Playhead */}
             <div
               onMouseDown={(e) => {
@@ -561,7 +582,7 @@ export default function VideoMerge() {
 
             {/* Trim Range */}
             {totalDuration > 0 && (
-              <div className="absolute top-0 left-0 right-0 h-full">
+              <div className="absolute left-0 right-0 h-14 bottom-0">
                 <Range
                   step={0.1}
                   min={0}
@@ -607,7 +628,7 @@ export default function VideoMerge() {
                         key={key}
                         {...rest}
                         style={{ ...(rest.style || {}) }}
-                        className="h-full w-2 bg-orange-500 pointer-events-auto"
+                        className="h-14 w-2 bg-orange-500 pointer-events-auto"
                       />
                     );
                   }}
