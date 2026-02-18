@@ -134,7 +134,7 @@ export default function VideoMerge() {
   const panStartX = useRef(0);
   const panStartScroll = useRef(0);
 
-  // 2. Define the Window Size (10 minutes)
+  // Timeline Window Size (10 minutes)
   const WINDOW_SIZE = 600;
 
   // Load FFmpeg.wasm once on component mount
@@ -280,19 +280,16 @@ export default function VideoMerge() {
         const trimStart = values[0];
         const trimEnd = values[1];
 
-        // ✅ STOP when reaching trim end
         if (global >= trimEnd - 0.01) {
           video.pause();
           setIsPlaying(false);
 
-          // Lock exactly at trimEnd
           seekToGlobalTime(trimEnd, false);
           setCurrentTime(trimEnd);
 
-          return; // 🚫 Stop animation loop
+          return;
         }
 
-        // Optional safety clamp (if user seeks before trim)
         if (global < trimStart) {
           seekToGlobalTime(trimStart, false);
           setCurrentTime(trimStart);
@@ -304,7 +301,6 @@ export default function VideoMerge() {
 
         const currentVideoDuration = durations[currentIndex];
 
-        // ✅ Only allow chunk switching if still inside trim
         if (
           video.currentTime >= currentVideoDuration - 0.05 &&
           currentIndex < allChunks.length - 1
@@ -393,7 +389,7 @@ export default function VideoMerge() {
       setIsPlaying(false);
     }
   };
-  
+
   // Drag Playhead functions
   const updateTimeFromPosition = (clientX: number) => {
     if (
