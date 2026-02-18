@@ -7,6 +7,7 @@ import { FaPlay } from "react-icons/fa6";
 import { IoMdPause } from "react-icons/io";
 import { formatClockTime, formatTime } from "./ui/formattime";
 import Image from "next/image";
+import { GrChapterNext, GrChapterPrevious } from "react-icons/gr";
 
 const videoSources = [
   {
@@ -390,6 +391,16 @@ export default function VideoMerge() {
     }
   };
 
+  const skipBackward = () => {
+    const newTime = Math.max(values[0], currentTime - 5);
+    seekToGlobalTime(newTime, true);
+  };
+
+  const skipForward = () => {
+    const newTime = Math.min(values[1], currentTime + 5);
+    seekToGlobalTime(newTime, true);
+  };
+
   // Drag Playhead functions
   const updateTimeFromPosition = (clientX: number) => {
     if (
@@ -640,6 +651,34 @@ export default function VideoMerge() {
                   <FaPlay className="text-xl text-black" />
                 )}
               </div>
+            </button>
+          </div>
+
+          <div className="flex w-full items-center justify-center gap-3 mt-5">
+            <button
+              onClick={skipBackward}
+              className="bg-white/90 flex items-center gap-2 rounded-full p-2 shadow-lg cursor-pointer hover:bg-gray-300 text-xl text-black"
+            >
+              <GrChapterPrevious className="text-xl" />
+              Prev 5s
+            </button>
+
+            <button
+              onClick={togglePlay} className="bg-white/90 hover:bg-gray-300 rounded-full p-4 shadow-lg cursor-pointer">
+              {isPlaying ? (
+                <IoMdPause className="text-xl text-black" />
+              ) : (
+                <FaPlay className="text-xl text-black" />
+              )}
+            </button>
+
+            <button
+              onClick={skipForward}
+              className="bg-white/90 flex items-center gap-2 rounded-full p-2 shadow-lg cursor-pointer hover:bg-gray-300 text-xl text-black"
+            >
+              Next 5s
+              <GrChapterNext className="text-xl" />
+              
             </button>
           </div>
 
