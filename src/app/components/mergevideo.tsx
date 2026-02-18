@@ -60,6 +60,51 @@ const videoSources = [
         sizeBytes: 1716194,
         createdAt: "2026-02-16T10:38:44.598Z",
       },
+      {
+        id: "96849ba8-7791-4a95-aa5f-3d4a99cfe35f",
+        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b28",
+        filePath:
+          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
+        duration: 60,
+        sizeBytes: 67046,
+        createdAt: "2026-02-16T10:40:28.533Z",
+      },
+      {
+        id: "dc219123-d69d-43aa-bf2a-378462b743d1",
+        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b29",
+        filePath:
+          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part2(split-video.com).mp4",
+        duration: 60,
+        sizeBytes: 843882,
+        createdAt: "2026-02-16T10:42:03.636Z",
+      },
+      {
+        id: "34f1ef88-c51f-422c-9ec3-f5f2b90d4162",
+        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b26",
+        filePath:
+          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part3(split-video.com).mp4",
+        duration: 60,
+        sizeBytes: 958510,
+        createdAt: "2026-02-16T10:44:34.132Z",
+      },
+      {
+        id: "229f90b7-e8f7-41b2-bf59-4c7eee74491e",
+        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b29",
+        filePath:
+          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part4(split-video.com).mp4",
+        duration: 60,
+        sizeBytes: 2333267,
+        createdAt: "2026-02-16T10:46:24.402Z",
+      },
+      {
+        id: "da0631f5-8eb9-4134-be4d-4a22ce93ecd2",
+        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b30",
+        filePath:
+          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
+        duration: 60,
+        sizeBytes: 1716194,
+        createdAt: "2026-02-16T10:48:44.598Z",
+      },
     ],
   },
 ];
@@ -82,6 +127,15 @@ export default function VideoMerge() {
   const wasPlayingRef = useRef(false);
   const preloadRef = useRef<HTMLVideoElement | null>(null);
   const isSwitchingVideoRef = useRef(false);
+  const [previewTime, setPreviewTime] = useState<number | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollTimer = useRef<NodeJS.Timeout | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartX = useRef(0);
+  const panStartScroll = useRef(0);
+
+  // 2. Define the Window Size (10 minutes)
+  const WINDOW_SIZE = 600;
 
   // Load FFmpeg.wasm once on component mount
   useEffect(() => {
@@ -213,16 +267,68 @@ export default function VideoMerge() {
     let animationFrameId: number;
 
     const update = () => {
+      if (!videoRef.current) return;
+      const video = videoRef.current;
+
       if (!isSwitchingVideoRef.current) {
         const before = durations
           .slice(0, currentIndex)
           .reduce((sum, d) => sum + d, 0);
 
         const global = before + video.currentTime;
+
+        const trimStart = values[0];
+        const trimEnd = values[1];
+
+        // ✅ STOP when reaching trim end
+        if (global >= trimEnd - 0.01) {
+          video.pause();
+          setIsPlaying(false);
+
+          // Lock exactly at trimEnd
+          seekToGlobalTime(trimEnd, false);
+          setCurrentTime(trimEnd);
+
+          return; // 🚫 Stop animation loop
+        }
+
+        // Optional safety clamp (if user seeks before trim)
+        if (global < trimStart) {
+          seekToGlobalTime(trimStart, false);
+          setCurrentTime(trimStart);
+          animationFrameId = requestAnimationFrame(update);
+          return;
+        }
+
         setCurrentTime(global);
 
-        if (global >= values[1]) {
-          seekToGlobalTime(values[0]);
+        const currentVideoDuration = durations[currentIndex];
+
+        // ✅ Only allow chunk switching if still inside trim
+        if (
+          video.currentTime >= currentVideoDuration - 0.05 &&
+          currentIndex < allChunks.length - 1
+        ) {
+          isSwitchingVideoRef.current = true;
+
+          const nextIndex = currentIndex + 1;
+          const wasPlaying = !video.paused;
+
+          setCurrentIndex(nextIndex);
+
+          requestAnimationFrame(() => {
+            if (videoRef.current) {
+              videoRef.current.currentTime = 0;
+
+              if (wasPlaying) {
+                videoRef.current.play().catch(() => {});
+              }
+            }
+
+            isSwitchingVideoRef.current = false;
+          });
+
+          return;
         }
       }
 
@@ -232,7 +338,7 @@ export default function VideoMerge() {
     animationFrameId = requestAnimationFrame(update);
 
     return () => cancelAnimationFrame(animationFrameId);
-  }, [currentIndex, durations, values]);
+  }, [currentIndex, durations, totalDuration, values]);
 
   // Auto Resume When Switching Video
   useEffect(() => {
@@ -270,28 +376,59 @@ export default function VideoMerge() {
   // Play pause toggle function
   const togglePlay = () => {
     if (!videoRef.current) return;
+    const video = videoRef.current;
+    const trimStart = values[0];
+    const trimEnd = values[1];
 
-    if (videoRef.current.paused) {
-      videoRef.current.play();
+    if (video.paused) {
+      if (currentTime >= trimEnd - 0.01) {
+        seekToGlobalTime(trimStart, false);
+        setCurrentTime(trimStart);
+      }
+
+      video.play().catch(() => {});
       setIsPlaying(true);
     } else {
-      videoRef.current.pause();
+      video.pause();
       setIsPlaying(false);
     }
   };
-
+  
   // Drag Playhead functions
   const updateTimeFromPosition = (clientX: number) => {
-    if (!timelineRef.current || totalDuration === 0) return;
+    if (
+      !timelineRef.current ||
+      !scrollContainerRef.current ||
+      totalDuration === 0
+    )
+      return;
 
-    const rect = timelineRef.current.getBoundingClientRect();
-    const offsetX = clientX - rect.left;
-    const percentage = Math.min(Math.max(offsetX / rect.width, 0), 1);
+    const container = scrollContainerRef.current;
+    const rect = container.getBoundingClientRect();
+
+    const relativeX = clientX - rect.left;
+    const edgeThreshold = rect.width * 0.1;
+
+    if (autoScrollTimer.current) clearInterval(autoScrollTimer.current);
+
+    if (relativeX > rect.width - edgeThreshold) {
+      autoScrollTimer.current = setInterval(() => {
+        container.scrollLeft += 10;
+      }, 16);
+    } else if (relativeX < edgeThreshold) {
+      autoScrollTimer.current = setInterval(() => {
+        container.scrollLeft -= 10;
+      }, 16);
+    }
+
+    const absoluteX = relativeX + container.scrollLeft;
+    const timelineTotalWidth = timelineRef.current.offsetWidth;
+    const percentage = Math.min(Math.max(absoluteX / timelineTotalWidth, 0), 1);
 
     let newTime = percentage * totalDuration;
     newTime = Math.max(values[0], Math.min(newTime, values[1]));
 
-    seekToGlobalTime(newTime, true);
+    setPreviewTime(newTime);
   };
 
   // Mouse move and up listeners for dragging playhead
@@ -301,7 +438,21 @@ export default function VideoMerge() {
       updateTimeFromPosition(e.clientX);
     };
 
-    const handleUp = () => setIsDraggingPlayhead(false);
+    const handleUp = () => {
+      if (!isDraggingPlayhead) return;
+
+      if (autoScrollTimer.current) {
+        clearInterval(autoScrollTimer.current);
+        autoScrollTimer.current = null;
+      }
+
+      if (previewTime !== null) {
+        seekToGlobalTime(previewTime, true);
+        setPreviewTime(null);
+      }
+
+      setIsDraggingPlayhead(false);
+    };
 
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
@@ -310,7 +461,38 @@ export default function VideoMerge() {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [isDraggingPlayhead, totalDuration, values]);
+  }, [isDraggingPlayhead, previewTime]);
+
+  // Timeline panning handlers
+  const handlePanStart = (e: React.MouseEvent) => {
+    if (!scrollContainerRef.current) return;
+    if ((e.target as HTMLElement).closest(".playhead")) return;
+
+    setIsPanning(true);
+    panStartX.current = e.clientX;
+    panStartScroll.current = scrollContainerRef.current.scrollLeft;
+  };
+
+  const handlePanMove = (e: MouseEvent) => {
+    if (!isPanning || !scrollContainerRef.current) return;
+
+    const dx = e.clientX - panStartX.current;
+    scrollContainerRef.current.scrollLeft = panStartScroll.current - dx;
+  };
+
+  const handlePanEnd = () => {
+    setIsPanning(false);
+  };
+
+  useEffect(() => {
+    window.addEventListener("mousemove", handlePanMove);
+    window.addEventListener("mouseup", handlePanEnd);
+
+    return () => {
+      window.removeEventListener("mousemove", handlePanMove);
+      window.removeEventListener("mouseup", handlePanEnd);
+    };
+  }, [isPanning]);
 
   // FFmpeg Cleanup Helper
   const cleanupFiles = async (segmentFiles: string[], videoCount: number) => {
@@ -447,28 +629,6 @@ export default function VideoMerge() {
               className="w-full rounded-lg h-125 object-cover"
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
-              onEnded={() => {
-                if (currentIndex < allChunks.length - 1) {
-                  const nextIndex = currentIndex + 1;
-
-                  isSwitchingVideoRef.current = true;
-                  setCurrentIndex(nextIndex);
-
-                  const handleNextVideoLoaded = () => {
-                    isSwitchingVideoRef.current = false;
-                    videoRef.current?.play().catch(() => {});
-                    videoRef.current?.removeEventListener(
-                      "loadeddata",
-                      handleNextVideoLoaded,
-                    );
-                  };
-
-                  videoRef.current?.addEventListener(
-                    "loadeddata",
-                    handleNextVideoLoaded,
-                  );
-                }
-              }}
             />
 
             <button
@@ -487,154 +647,180 @@ export default function VideoMerge() {
             </button>
           </div>
 
-          {/* TIMELINE */}
-          <div ref={timelineRef} className="relative mt-6 pointer-events-none">
-            <div className="relative w-full h-5 mt-10 pointer-events-none select-none">
-              {(() => {
-                let accumulated = 0;
-                const elements: React.ReactNode[] = [];
+          <div
+            ref={scrollContainerRef}
+            onMouseDown={handlePanStart}
+            className="overflow-x-auto [&::-webkit-scrollbar]:hidden cursor-grab active:cursor-grabbing"
+            style={{ width: "100%" }}
+          >
+            {/* TIMELINE */}
+            <div
+              ref={timelineRef}
+              className="relative h-24"
+              style={{
+                width: `${(totalDuration / WINDOW_SIZE) * 100}%`,
+                minWidth: "100%",
+              }}
+            >
+              <div className="relative w-full h-5 mt-10 pointer-events-none select-none ">
+                {(() => {
+                  let accumulated = 0;
+                  const elements: React.ReactNode[] = [];
 
-                allChunks.forEach((chunk, i) => {
-                  const startTime = accumulated;
-                  const duration = durations[i] || 0;
-                  const endTime = startTime + duration;
+                  allChunks.forEach((chunk, i) => {
+                    const startTime = accumulated;
+                    const duration = durations[i] || 0;
+                    const endTime = startTime + duration;
 
-                  const leftPercent = (startTime / totalDuration) * 100;
-                  const timeLabel = formatClockTime(chunk.createdAt);
-
-                  elements.push(
-                    <div
-                      key={`major-${chunk.id}`}
-                      className="absolute flex flex-col items-center"
-                      style={{
-                        left: `${leftPercent}%`,
-                        transform: "translateX(-50%)",
-                      }}
-                    >
-                      <span className="text-[10px] text-gray-400 font-bold mb-1">
-                        {timeLabel}
-                      </span>
-                      <div className="w-0.5 h-2 bg-gray-400"></div>
-                    </div>,
-                  );
-
-                  const minuteStep = 60;
-
-                  for (
-                    let t = startTime + minuteStep;
-                    t < endTime;
-                    t += minuteStep
-                  ) {
-                    const percent = (t / totalDuration) * 100;
+                    const leftPercent = (startTime / totalDuration) * 100;
+                    const timeLabel = formatClockTime(chunk.createdAt);
 
                     elements.push(
                       <div
-                        key={`minor-${chunk.id}-${t}`}
-                        className="absolute"
+                        key={`major-${chunk.id}`}
+                        className="absolute flex flex-col items-center"
                         style={{
-                          left: `${percent}%`,
+                          left: `${leftPercent}%`,
                           transform: "translateX(-50%)",
                         }}
                       >
-                        <div className="w-1 h-1 bg-gray-300 rounded-full mt-3"></div>
+                        <span className="text-[10px] text-gray-400 font-bold mb-1">
+                          {timeLabel}
+                        </span>
+                        <div className="w-0.5 h-2 bg-gray-400"></div>
                       </div>,
                     );
-                  }
 
-                  accumulated = endTime;
-                });
+                    const minuteStep = 60;
 
-                return elements;
-              })()}
-            </div>
+                    for (
+                      let t = startTime + minuteStep;
+                      t < endTime;
+                      t += minuteStep
+                    ) {
+                      const percent = (t / totalDuration) * 100;
 
-            {/* Playhead */}
-            <div
-              onMouseDown={(e) => {
-                setIsDraggingPlayhead(true);
-                updateTimeFromPosition(e.clientX);
-              }}
-              className="absolute top-0 bottom-0 w-0.5 bg-white 
-             shadow-[0_0_5px_rgba(0,0,0,0.5)] 
-             z-60 cursor-ew-resize pointer-events-auto"
-              style={{
-                left: `${(currentTime / totalDuration) * 100}%`,
-              }}
-            >
-              <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-white rotate-45" />
-            </div>
+                      elements.push(
+                        <div
+                          key={`minor-${chunk.id}-${t}`}
+                          className="absolute"
+                          style={{
+                            left: `${percent}%`,
+                            transform: "translateX(-50%)",
+                          }}
+                        >
+                          <div className="w-1 h-1 bg-gray-300 rounded-full mt-3"></div>
+                        </div>,
+                      );
+                    }
 
-            {/* Thumbnails */}
-            <div className="flex w-full mt-5 rounded-lg overflow-hidden select-none pointer-events-none h-14">
-              {thumbnails.map((thumb, i) => (
-                <div key={i} className="flex-1 select-none pointer-events-none">
-                  <Image
-                    alt="thumbnail"
-                    width={100}
-                    height={100}
-                    src={thumb}
-                    className="w-full h-full object-cover select-none pointer-events-none"
-                    draggable={false}
+                    accumulated = endTime;
+                  });
+
+                  return elements;
+                })()}
+              </div>
+
+              {/* Playhead */}
+              <div
+                onMouseDown={(e) => {
+                  e.stopPropagation(); // prevent pan conflict
+                  setIsDraggingPlayhead(true);
+                  updateTimeFromPosition(e.clientX);
+                }}
+                className="absolute top-0 bottom-0 w-1 bg-white z-50 cursor-grab pointer-events-auto"
+                style={{
+                  left: `${
+                    ((previewTime ?? currentTime) / totalDuration) * 100
+                  }%`,
+                }}
+              >
+                <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-white rotate-45" />
+              </div>
+
+              {/* Thumbnails */}
+              <div className="flex w-full mt-5 rounded-lg overflow-hidden select-none! pointer-events-none h-14">
+                {thumbnails.map((thumb, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 select-none! pointer-events-none"
+                  >
+                    <Image
+                      alt="thumbnail"
+                      width={100}
+                      height={100}
+                      src={thumb}
+                      className="w-full h-full object-cover select-none! pointer-events-none!"
+                      draggable={false}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Trim Range */}
+              {totalDuration > 0 && (
+                <div className="absolute left-0 right-0 h-14 bottom-0 pointer-events-none">
+                  <Range
+                    step={0.1}
+                    min={0}
+                    max={totalDuration}
+                    values={values}
+                    onChange={(vals) => setValues(vals)}
+                    onFinalChange={(vals) => {
+                      if (currentTime < vals[0]) {
+                        seekToGlobalTime(vals[0], true);
+                      } else if (currentTime > vals[1]) {
+                        seekToGlobalTime(vals[1], true);
+                      }
+                    }}
+                    renderTrack={({ props, children }) => {
+                      const trackProps = props as any;
+                      const { key, ...rest } = trackProps;
+                      const startPercent = (values[0] / totalDuration) * 100;
+                      const endPercent = (values[1] / totalDuration) * 100;
+
+                      return (
+                        <div
+                          key={key}
+                          {...rest}
+                          {...props}
+                          className="relative h-full w-full"
+                        >
+                          <div
+                            className="absolute top-0 h-full bg-black/70"
+                            style={{ width: `${startPercent}%` }}
+                          />
+                          <div
+                            className="absolute top-0 h-full bg-black/70"
+                            style={{
+                              left: `${endPercent}%`,
+                              width: `${100 - endPercent}%`,
+                            }}
+                          />
+                          {children}
+                        </div>
+                      );
+                    }}
+                    renderThumb={({ props }) => {
+                      const thumbProps = props as any;
+                      const { key, ...rest } = thumbProps;
+                      return (
+                        <div
+                          key={key}
+                          {...rest}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            rest.onMouseDown?.(e);
+                          }}
+                          style={{ ...(rest.style || {}) }}
+                          className="h-14 w-2 bg-orange-500 pointer-events-auto cursor-ew-resize!"
+                        />
+                      );
+                    }}
                   />
                 </div>
-              ))}
+              )}
             </div>
-
-            {/* Trim Range */}
-            {totalDuration > 0 && (
-              <div className="absolute left-0 right-0 h-14 bottom-0">
-                <Range
-                  step={0.1}
-                  min={0}
-                  max={totalDuration}
-                  values={values}
-                  onChange={(vals) => {
-                    setValues(vals);
-                    seekToGlobalTime(vals[0]);
-                  }}
-                  renderTrack={({ props, children }) => {
-                    const trackProps = props as any;
-                    const { key, ...rest } = trackProps;
-                    const startPercent = (values[0] / totalDuration) * 100;
-                    const endPercent = (values[1] / totalDuration) * 100;
-
-                    return (
-                      <div
-                        key={key}
-                        {...rest}
-                        {...props}
-                        className="relative h-full w-full"
-                      >
-                        <div
-                          className="absolute top-0 h-full bg-black/70"
-                          style={{ width: `${startPercent}%` }}
-                        />
-                        <div
-                          className="absolute top-0 h-full bg-black/70"
-                          style={{
-                            left: `${endPercent}%`,
-                            width: `${100 - endPercent}%`,
-                          }}
-                        />
-                        {children}
-                      </div>
-                    );
-                  }}
-                  renderThumb={({ props }) => {
-                    const thumbProps = props as any;
-                    const { key, ...rest } = thumbProps;
-                    return (
-                      <div
-                        key={key}
-                        {...rest}
-                        style={{ ...(rest.style || {}) }}
-                        className="h-14 w-2 bg-orange-500 pointer-events-auto"
-                      />
-                    );
-                  }}
-                />
-              </div>
-            )}
           </div>
 
           <div className="flex items-center justify-between w-full mt-3">
