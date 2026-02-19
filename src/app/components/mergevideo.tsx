@@ -134,6 +134,16 @@ export default function VideoMerge() {
   const [isPanning, setIsPanning] = useState(false);
   const panStartX = useRef(0);
   const panStartScroll = useRef(0);
+  const [isTrimMode, setIsTrimMode] = useState(false);
+  const [trimStep, setTrimStep] = useState<"idle" | "start" | "end" | "done">(
+    "idle",
+  );
+  const [hasStart, setHasStart] = useState(false);
+  const [hasEnd, setHasEnd] = useState(false);
+  const clickStartRef = useRef<{ x: number; moved: boolean }>({
+    x: 0,
+    moved: false,
+  });
 
   // Timeline Window Size (10 minutes)
   const WINDOW_SIZE = 600;
@@ -257,6 +267,31 @@ export default function VideoMerge() {
         break;
       }
       accumulated += durations[i];
+    }
+  };
+
+  // Timeline Click Handler
+  const handleTimelineClick = (clientX: number) => {
+    if (!timelineRef.current || !scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const rect = container.getBoundingClientRect();
+    const relativeX = clientX - rect.left;
+    const absoluteX = relativeX + container.scrollLeft;
+    const timelineTotalWidth = timelineRef.current.offsetWidth;
+
+    const percentage = Math.min(Math.max(absoluteX / timelineTotalWidth, 0), 1);
+    const newTime = percentage * totalDuration;
+
+    if (trimStep === "start") {
+      setValues([newTime, totalDuration]);
+      setHasStart(true);
+      setTrimStep("end");
+    } else if (trimStep === "end") {
+      if (newTime <= values[0]) return;
+      setValues([values[0], newTime]);
+      setHasEnd(true);
+      setTrimStep("done");
     }
   };
 
@@ -456,6 +491,13 @@ export default function VideoMerge() {
       if (previewTime !== null) {
         seekToGlobalTime(previewTime, true);
         setPreviewTime(null);
+
+        // 🔥 Resume if it was playing
+        if (wasPlayingRef.current) {
+          requestAnimationFrame(() => {
+            videoRef.current?.play().catch(() => {});
+          });
+        }
       }
 
       setIsDraggingPlayhead(false);
@@ -654,32 +696,98 @@ export default function VideoMerge() {
             </button>
           </div>
 
-          <div className="flex w-full items-center justify-center gap-3 mt-5">
-            <button
-              onClick={skipBackward}
-              className="bg-white/90 flex items-center gap-2 rounded-full p-2 shadow-lg cursor-pointer hover:bg-gray-300 text-xl text-black"
-            >
-              <GrChapterPrevious className="text-xl" />
-              Prev 5s
-            </button>
-
-            <button
-              onClick={togglePlay} className="bg-white/90 hover:bg-gray-300 rounded-full p-4 shadow-lg cursor-pointer">
-              {isPlaying ? (
-                <IoMdPause className="text-xl text-black" />
-              ) : (
-                <FaPlay className="text-xl text-black" />
+          <div className="flex items-center justify-evenly gap-4 w-full mt-8">
+            <div className="w-75">
+              {!isTrimMode && (
+                <button
+                  onClick={() => {
+                    setIsTrimMode(true);
+                    setTrimStep("start");
+                    setHasStart(false);
+                    setHasEnd(false);
+                    setValues([0, totalDuration]);
+                  }}
+                  className="bg-orange-500 text-white px-4 py-2 rounded cursor-pointer"
+                >
+                  Trim Video
+                </button>
               )}
-            </button>
 
-            <button
-              onClick={skipForward}
-              className="bg-white/90 flex items-center gap-2 rounded-full p-2 shadow-lg cursor-pointer hover:bg-gray-300 text-xl text-black"
-            >
-              Next 5s
-              <GrChapterNext className="text-xl" />
-              
-            </button>
+              {isTrimMode && (
+                <button
+                  onClick={() => {
+                    setIsTrimMode(false);
+                    setTrimStep("idle");
+                    setHasStart(false);
+                    setHasEnd(false);
+                    setValues([0, totalDuration]);
+                  }}
+                  className="bg-red-500 text-white px-4 py-2 rounded cursor-pointer"
+                >
+                  Stop Trimming
+                </button>
+              )}
+            </div>
+
+            <div className="flex w-full items-center justify-center gap-6 ">
+              {/* Skip Backward */}
+              <button
+                onClick={skipBackward}
+                className="group flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-full transition-all duration-200 active:scale-95 shadow-xl cursor-pointer"
+              >
+                <GrChapterPrevious className="text-lg text-white group-hover:-translate-x-1 transition-transform" />
+                <span className="text-sm font-medium text-white">5s</span>
+              </button>
+
+              {/* Play/Pause  */}
+              <button
+                onClick={togglePlay}
+                className="relative flex items-center justify-center w-16 h-16 bg-linear-to-br from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 rounded-full shadow-[0_0_20px_rgba(99,102,241,0.5)] transition-all duration-300 transform hover:scale-110 active:scale-90 cursor-pointer"
+              >
+                {isPlaying ? (
+                  <IoMdPause className="text-2xl text-white" />
+                ) : (
+                  <FaPlay className="text-2xl text-white ml-1" />
+                )}
+              </button>
+
+              {/* Skip Forward */}
+              <button
+                onClick={skipForward}
+                className="group flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-full transition-all duration-200 active:scale-95 shadow-xl cursor-pointer"
+              >
+                <span className="text-sm font-medium text-white">5s</span>
+                <GrChapterNext className="text-lg text-white group-hover:translate-x-1 transition-transform" />
+              </button>
+            </div>
+
+            <div className="w-75">
+              {isTrimMode && hasStart && !hasEnd && (
+                <button
+                  onClick={() => {
+                    setHasStart(false);
+                    setTrimStep("start");
+                    setValues([0, totalDuration]);
+                  }}
+                  className="bg-yellow-500 text-white px-4 py-2 rounded cursor-pointer"
+                >
+                  Remove Start Trim
+                </button>
+              )}
+
+              {isTrimMode && hasEnd && (
+                <button
+                  onClick={() => {
+                    setHasEnd(false);
+                    setTrimStep("end");
+                    setValues([values[0], totalDuration]);
+                  }}
+                  className="bg-yellow-500 text-white px-4 py-2 rounded cursor-pointer"
+                >
+                  Remove End Trim
+                </button>
+              )}
+            </div>
           </div>
 
           <div
@@ -695,6 +803,56 @@ export default function VideoMerge() {
               style={{
                 width: `${(totalDuration / WINDOW_SIZE) * 100}%`,
                 minWidth: "100%",
+              }}
+              onClick={(e) => {
+                if (clickStartRef.current.moved) return;
+                if (!timelineRef.current || !scrollContainerRef.current) return;
+                const container = scrollContainerRef.current;
+                const rect = container.getBoundingClientRect();
+                const relativeX = e.clientX - rect.left;
+                const absoluteX = relativeX + container.scrollLeft;
+                const timelineTotalWidth = timelineRef.current.offsetWidth;
+                const percentage = Math.min(
+                  Math.max(absoluteX / timelineTotalWidth, 0),
+                  1,
+                );
+                const newTime = percentage * totalDuration;
+                if (isTrimMode && !hasEnd) {
+                  handleTimelineClick(e.clientX);
+                  return;
+                }
+                if (isTrimMode && hasEnd) {
+                  if (newTime < values[0] || newTime > values[1]) return;
+                  seekToGlobalTime(newTime, true);
+                  setCurrentTime(newTime);
+                  if (isPlaying) {
+                    requestAnimationFrame(() => {
+                      videoRef.current?.play().catch(() => {});
+                    });
+                  }
+                  return;
+                }
+                if (!isTrimMode) {
+                  seekToGlobalTime(newTime, true);
+                  setCurrentTime(newTime);
+                  if (isPlaying) {
+                    requestAnimationFrame(() => {
+                      videoRef.current?.play().catch(() => {});
+                    });
+                  }
+                }
+              }}
+              onMouseDown={(e) => {
+                clickStartRef.current = {
+                  x: e.clientX,
+                  moved: false,
+                };
+              }}
+              onMouseMove={(e) => {
+                const dx = Math.abs(e.clientX - clickStartRef.current.x);
+                if (dx > 5) {
+                  clickStartRef.current.moved = true;
+                }
               }}
             >
               <div className="relative w-full h-5 mt-10 pointer-events-none select-none ">
@@ -744,7 +902,7 @@ export default function VideoMerge() {
                             transform: "translateX(-50%)",
                           }}
                         >
-                          <div className="w-1 h-1 bg-gray-300 rounded-full mt-3"></div>
+                          <div className="w-1 h-1 bg-gray-300 rounded-full "></div>
                         </div>,
                       );
                     }
@@ -759,11 +917,14 @@ export default function VideoMerge() {
               {/* Playhead */}
               <div
                 onMouseDown={(e) => {
-                  e.stopPropagation(); // prevent pan conflict
+                  e.stopPropagation();
+                  if (!videoRef.current) return;
+                  wasPlayingRef.current = !videoRef.current.paused;
+                  videoRef.current.pause();
                   setIsDraggingPlayhead(true);
                   updateTimeFromPosition(e.clientX);
                 }}
-                className="absolute top-0 bottom-0 w-1 bg-white z-50 cursor-grab pointer-events-auto"
+                className="absolute top-0 bottom-0 w-1 bg-white z-50 cursor-default pointer-events-auto"
                 style={{
                   left: `${
                     ((previewTime ?? currentTime) / totalDuration) * 100
@@ -793,7 +954,7 @@ export default function VideoMerge() {
               </div>
 
               {/* Trim Range */}
-              {totalDuration > 0 && (
+              {isTrimMode && hasStart && (
                 <div className="absolute left-0 right-0 h-14 bottom-0 pointer-events-none">
                   <Range
                     step={0.1}
@@ -859,26 +1020,28 @@ export default function VideoMerge() {
           </div>
 
           <div className="flex items-center justify-between w-full mt-3">
-            <div className="flex items-center gap-1">
-              <p>Trimmed Part:</p>
-              <strong>
-                {formatTime(values[0])} - {formatTime(values[1])}
-              </strong>
-            </div>
+            {isTrimMode && hasStart && hasEnd && (
+              <div className="flex items-center gap-1">
+                <p>Trimmed Video Duration:</p>
+                <strong>{formatTime(values[1] - values[0])}</strong>
+              </div>
+            )}
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center justify-end ml-auto gap-1">
               <p>Total Video Duration:</p>{" "}
               <strong>{formatTime(totalDuration)}</strong>
             </div>
           </div>
 
-          <button
-            onClick={handleTrimAndMerge}
-            disabled={loading}
-            className="mt-4 bg-orange-500 text-white px-4 py-2 rounded cursor-pointer"
-          >
-            {loading ? "Processing..." : "Download Trimmed Merge"}
-          </button>
+          {isTrimMode && hasStart && hasEnd && (
+            <button
+              onClick={handleTrimAndMerge}
+              disabled={loading}
+              className="mt-4 bg-orange-500 text-white px-4 py-2 rounded cursor-pointer"
+            >
+              {loading ? "Processing..." : "Download Trimmed Section"}
+            </button>
+          )}
         </>
       )}
     </div>
