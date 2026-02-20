@@ -144,9 +144,11 @@ export default function VideoMerge() {
     x: 0,
     moved: false,
   });
+  const [ghostX, setGhostX] = useState<number | null>(null);
 
   // Timeline Window Size (10 minutes)
   const WINDOW_SIZE = 600;
+  const TOTAL_THUMBNAILS = allChunks.length * 2;
 
   // Load FFmpeg.wasm once on component mount
   useEffect(() => {
@@ -742,7 +744,7 @@ export default function VideoMerge() {
               {/* Play/Pause  */}
               <button
                 onClick={togglePlay}
-                className="relative flex items-center justify-center w-16 h-16 bg-linear-to-br from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 rounded-full shadow-[0_0_20px_rgba(99,102,241,0.5)] transition-all duration-300 transform hover:scale-110 active:scale-90 cursor-pointer"
+                className="relative flex items-center justify-center w-16 h-16 bg-linear-to-br from-orange-400 to-orange-800 hover:from-orange-500 hover:to-orange-800 rounded-full shadow-[0_0_20px_#f54a00] transition-all duration-300 transform hover:scale-110 active:scale-90 cursor-pointer"
               >
                 {isPlaying ? (
                   <IoMdPause className="text-2xl text-white" />
@@ -799,7 +801,11 @@ export default function VideoMerge() {
             {/* TIMELINE */}
             <div
               ref={timelineRef}
-              className="relative h-24"
+              className={`relative h-24 ${
+                isTrimMode && trimStep !== "done"
+                  ? "cursor-crosshair"
+                  : "cursor-grab active:cursor-grabbing"
+              }`}
               style={{
                 width: `${(totalDuration / WINDOW_SIZE) * 100}%`,
                 minWidth: "100%",
@@ -853,7 +859,17 @@ export default function VideoMerge() {
                 if (dx > 5) {
                   clickStartRef.current.moved = true;
                 }
+
+                if (isTrimMode && trimStep !== "done") {
+                  if (!timelineRef.current) return;
+
+                  const rect = timelineRef.current.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+
+                  setGhostX(x);
+                }
               }}
+              onMouseLeave={() => setGhostX(null)}
             >
               <div className="relative w-full h-5 mt-10 pointer-events-none select-none ">
                 {(() => {
@@ -935,23 +951,49 @@ export default function VideoMerge() {
               </div>
 
               {/* Thumbnails */}
-              <div className="flex w-full mt-5 rounded-lg overflow-hidden select-none! pointer-events-none h-14">
-                {thumbnails.map((thumb, i) => (
-                  <div
-                    key={i}
-                    className="flex-1 select-none! pointer-events-none"
-                  >
-                    <Image
-                      alt="thumbnail"
-                      width={100}
-                      height={100}
-                      src={thumb}
-                      className="w-full h-full object-cover select-none! pointer-events-none!"
-                      draggable={false}
-                    />
-                  </div>
-                ))}
+              <div className="flex w-full mt-5 rounded-lg overflow-hidden select-none pointer-events-none h-14">
+                {Array.from({ length: TOTAL_THUMBNAILS }).map((_, i) => {
+                  const thumb = thumbnails[i];
+
+                  return (
+                    <div
+                      key={i}
+                      className="h-full shrink-0 relative bg-gray-800"
+                      style={{ width: `${100 / TOTAL_THUMBNAILS}%` }}
+                    >
+                      {thumb ? (
+                        <Image
+                          alt="thumbnail"
+                          width={128}
+                          height={56}
+                          src={thumb}
+                          className="w-full h-full object-cover"
+                          draggable={false}
+                        />
+                      ) : (
+                        <div
+                          className="w-full h-full bg-linear-to-r from-gray-800 via-gray-700 to-gray-800 bg-size-[200%_100%] animate-[pulse_1.2s_infinite]"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+
+              {isTrimMode && trimStep !== "done" && ghostX !== null && (
+                <div
+                  className="absolute bottom-0 pointer-events-none"
+                  style={{ left: ghostX }}
+                >
+                  <div className="absolute -top-8 -translate-x-1/2 whitespace-nowrap bg-black/80 backdrop-blur-sm text-white text-xs px-2 py-1 rounded shadow">
+                    {trimStep === "start"
+                      ? "Click to mark Start Trim"
+                      : "Click to mark End Trim"}
+                  </div>
+
+                  <div className="w-2 h-14 bg-orange-400 opacity-65" />
+                </div>
+              )}
 
               {/* Trim Range */}
               {isTrimMode && hasStart && (
@@ -1007,6 +1049,7 @@ export default function VideoMerge() {
                           onMouseDown={(e) => {
                             e.stopPropagation();
                             rest.onMouseDown?.(e);
+                            setIsDraggingPlayhead(true);
                           }}
                           style={{ ...(rest.style || {}) }}
                           className="h-14 w-2 bg-orange-500 pointer-events-auto cursor-ew-resize!"
