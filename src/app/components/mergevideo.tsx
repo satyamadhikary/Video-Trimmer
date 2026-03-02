@@ -1,6 +1,4 @@
 "use client";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile } from "@ffmpeg/util";
 import { useEffect, useRef, useState } from "react";
 import { Range } from "react-range";
 import { FaPlay } from "react-icons/fa6";
@@ -8,6 +6,7 @@ import { IoMdPause } from "react-icons/io";
 import { formatClockTime, formatTime } from "./ui/formattime";
 import Image from "next/image";
 import { GrChapterNext, GrChapterPrevious } from "react-icons/gr";
+import  Video from "next-video";
 
 const videoSources = [
   {
@@ -16,20 +15,20 @@ const videoSources = [
     status: "RUNNING",
     createdAt: "2026-02-16T10:32:18.142Z",
     chunks: [
-      {
-        id: "96849ba8-7791-4a95-aa5f-3d4a99cfe35e",
-        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
-        filePath:
-          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
-        duration: 60,
-        sizeBytes: 67046,
-        createdAt: "2026-02-16T10:32:28.533Z",
-      },
+      // {
+      //   id: "96849ba8-7791-4a95-aa5f-3d4a99cfe35e",
+      //   streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
+      //   filePath:
+      //     "https://vcvkmfcecsqnbynobspb.supabase.co/storage/v1/object/public/videos/part1-split-videocom-pncula.ts",
+      //   duration: 60,
+      //   sizeBytes: 67046,
+      //   createdAt: "2026-02-16T10:32:28.533Z",
+      // },
       {
         id: "dc219123-d69d-43aa-bf2a-378462b743d0",
         streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
         filePath:
-          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part2(split-video.com).mp4",
+          "https://vcvkmfcecsqnbynobspb.supabase.co/storage/v1/object/public/videos/part2(split-video.com).mp4",
         duration: 60,
         sizeBytes: 843882,
         createdAt: "2026-02-16T10:34:03.636Z",
@@ -38,74 +37,74 @@ const videoSources = [
         id: "34f1ef88-c51f-422c-9ec3-f5f2b90d4161",
         streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
         filePath:
-          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part3(split-video.com).mp4",
+          "https://vcvkmfcecsqnbynobspb.supabase.co/storage/v1/object/public/videos/part3(split-video.com).mp4",
         duration: 60,
         sizeBytes: 958510,
         createdAt: "2026-02-16T10:35:34.132Z",
       },
-      {
-        id: "229f90b7-e8f7-41b2-bf59-4c7eee74491d",
-        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
-        filePath:
-          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part4(split-video.com).mp4",
-        duration: 60,
-        sizeBytes: 2333267,
-        createdAt: "2026-02-16T10:37:24.402Z",
-      },
-      {
-        id: "da0631f5-8eb9-4134-be4d-4a22ce93ecd0",
-        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
-        filePath:
-          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
-        duration: 60,
-        sizeBytes: 1716194,
-        createdAt: "2026-02-16T10:38:44.598Z",
-      },
-      {
-        id: "96849ba8-7791-4a95-aa5f-3d4a99cfe35f",
-        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b28",
-        filePath:
-          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
-        duration: 60,
-        sizeBytes: 67046,
-        createdAt: "2026-02-16T10:40:28.533Z",
-      },
-      {
-        id: "dc219123-d69d-43aa-bf2a-378462b743d1",
-        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b29",
-        filePath:
-          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part2(split-video.com).mp4",
-        duration: 60,
-        sizeBytes: 843882,
-        createdAt: "2026-02-16T10:42:03.636Z",
-      },
-      {
-        id: "34f1ef88-c51f-422c-9ec3-f5f2b90d4162",
-        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b26",
-        filePath:
-          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part3(split-video.com).mp4",
-        duration: 60,
-        sizeBytes: 958510,
-        createdAt: "2026-02-16T10:44:34.132Z",
-      },
-      {
-        id: "229f90b7-e8f7-41b2-bf59-4c7eee74491e",
-        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b29",
-        filePath:
-          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part4(split-video.com).mp4",
-        duration: 60,
-        sizeBytes: 2333267,
-        createdAt: "2026-02-16T10:46:24.402Z",
-      },
-      {
-        id: "da0631f5-8eb9-4134-be4d-4a22ce93ecd2",
-        streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b30",
-        filePath:
-          "https://kfxzpeongnxuojiabmjz.supabase.co/storage/v1/object/public/video%20store/part1(split-video.com).mp4",
-        duration: 60,
-        sizeBytes: 1716194,
-        createdAt: "2026-02-16T10:48:44.598Z",
-      },
+      // {
+      //   id: "229f90b7-e8f7-41b2-bf59-4c7eee74491d",
+      //   streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
+      //   filePath:
+      //     "https://vcvkmfcecsqnbynobspb.supabase.co/storage/v1/object/public/videos/part4(split-video.com).mp4",
+      //   duration: 60,
+      //   sizeBytes: 2333267,
+      //   createdAt: "2026-02-16T10:37:24.402Z",
+      // },
+      // {
+      //   id: "da0631f5-8eb9-4134-be4d-4a22ce93ecd0",
+      //   streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b27",
+      //   filePath:
+      //     "https://vcvkmfcecsqnbynobspb.supabase.co/storage/v1/object/public/videos/part1(split-video.com).mp4",
+      //   duration: 60,
+      //   sizeBytes: 1716194,
+      //   createdAt: "2026-02-16T10:38:44.598Z",
+      // },
+      // {
+      //   id: "96849ba8-7791-4a95-aa5f-3d4a99cfe35f",
+      //   streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b28",
+      //   filePath:
+      //     "https://vcvkmfcecsqnbynobspb.supabase.co/storage/v1/object/public/videos/part2(split-video.com).mp4",
+      //   duration: 60,
+      //   sizeBytes: 67046,
+      //   createdAt: "2026-02-16T10:40:28.533Z",
+      // },
+      // {
+      //   id: "dc219123-d69d-43aa-bf2a-378462b743d1",
+      //   streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b29",
+      //   filePath:
+      //     "https://vcvkmfcecsqnbynobspb.supabase.co/storage/v1/object/public/videos/part3(split-video.com).mp4",
+      //   duration: 60,
+      //   sizeBytes: 843882,
+      //   createdAt: "2026-02-16T10:42:03.636Z",
+      // },
+      // {
+      //   id: "34f1ef88-c51f-422c-9ec3-f5f2b90d4162",
+      //   streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b26",
+      //   filePath:
+      //     "https://vcvkmfcecsqnbynobspb.supabase.co/storage/v1/object/public/videos/part4(split-video.com).mp4",
+      //   duration: 60,
+      //   sizeBytes: 958510,
+      //   createdAt: "2026-02-16T10:44:34.132Z",
+      // },
+      // {
+      //   id: "229f90b7-e8f7-41b2-bf59-4c7eee74491e",
+      //   streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b29",
+      //   filePath:
+      //     "https://vcvkmfcecsqnbynobspb.supabase.co/storage/v1/object/public/videos/part1(split-video.com).mp4",
+      //   duration: 60,
+      //   sizeBytes: 2333267,
+      //   createdAt: "2026-02-16T10:46:24.402Z",
+      // },
+      // {
+      //   id: "da0631f5-8eb9-4134-be4d-4a22ce93ecd2",
+      //   streamId: "9e6db6cb-c41c-4735-b37f-ce9262532b30",
+      //   filePath:
+      //     "https://vcvkmfcecsqnbynobspb.supabase.co/storage/v1/object/public/videos/part2(split-video.com).mp4",
+      //   duration: 60,
+      //   sizeBytes: 1716194,
+      //   createdAt: "2026-02-16T10:48:44.598Z",
+      // },
     ],
   },
 ];
@@ -113,7 +112,6 @@ const videoSources = [
 const allChunks = videoSources.flatMap((v) => v.chunks);
 
 export default function VideoMerge() {
-  const ffmpegRef = useRef<FFmpeg | null>(null);
   const [loading, setLoading] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -149,16 +147,6 @@ export default function VideoMerge() {
   // Timeline Window Size (10 minutes)
   const WINDOW_SIZE = 600;
   const TOTAL_THUMBNAILS = allChunks.length * 2;
-
-  // Load FFmpeg.wasm once on component mount
-  useEffect(() => {
-    const load = async () => {
-      const ffmpeg = new FFmpeg();
-      await ffmpeg.load();
-      ffmpegRef.current = ffmpeg;
-    };
-    load();
-  }, []);
 
   // Load Video Durations (Metadata Only)
   useEffect(() => {
@@ -545,138 +533,99 @@ export default function VideoMerge() {
     };
   }, [isPanning]);
 
-  // FFmpeg Cleanup Helper
-  const cleanupFiles = async (segmentFiles: string[], videoCount: number) => {
-    const ffmpeg = ffmpegRef.current!;
-
-    for (const file of segmentFiles) {
-      try {
-        await ffmpeg.deleteFile(file);
-      } catch {}
-    }
-
-    for (let i = 0; i < videoCount; i++) {
-      try {
-        await ffmpeg.deleteFile(`input${i}.mp4`);
-      } catch {}
-    }
-
-    try {
-      await ffmpeg.deleteFile("concat.txt");
-    } catch {}
-    try {
-      await ffmpeg.deleteFile("final.mp4");
-    } catch {}
-  };
-
   // Merge, trim and download using (FFMPEG)
-  const handleTrimAndMerge = async () => {
-    if (!ffmpegRef.current || durations.length === 0) return;
 
-    setLoading(true);
-    const ffmpeg = ffmpegRef.current;
-
-    const start = values[0];
-    const end = values[1];
-
+  const getTrimmedChunks = () => {
+    const [startTrim, endTrim] = values;
     let accumulated = 0;
-    let segmentIndex = 0;
-    const segmentFiles: string[] = [];
+    const selected: {
+      filePath: string;
+      duration: number;
+      start?: number;
+      end?: number;
+    }[] = [];
 
-    // 🔹 TRIM PHASE
     for (let i = 0; i < allChunks.length; i++) {
-      const videoStartGlobal = accumulated;
-      const videoEndGlobal = accumulated + durations[i];
+      const chunkDuration = durations[i] || 0;
+      const chunkStart = accumulated;
+      const chunkEnd = accumulated + chunkDuration;
 
-      const overlapStart = Math.max(start, videoStartGlobal);
-      const overlapEnd = Math.min(end, videoEndGlobal);
+      // Check if chunk intersects with trim range
+      if (chunkEnd > startTrim && chunkStart < endTrim) {
+        const chunkTrimStart = Math.max(0, startTrim - chunkStart); // in seconds relative to chunk
+        const chunkTrimEnd = Math.min(chunkDuration, endTrim - chunkStart);
 
-      if (overlapStart < overlapEnd) {
-        const localStart = overlapStart - videoStartGlobal;
-        const localDuration = overlapEnd - overlapStart;
-
-        const inputName = `input${i}.mp4`;
-        const outputName = `segment${segmentIndex}.mp4`;
-
-        await ffmpeg.writeFile(
-          inputName,
-          await fetchFile(allChunks[i].filePath),
-        );
-
-        await ffmpeg.exec([
-          "-ss",
-          localStart.toString(),
-          "-i",
-          inputName,
-          "-t",
-          localDuration.toString(),
-          "-c",
-          "copy",
-          outputName,
-        ]);
-
-        segmentFiles.push(outputName);
-        segmentIndex++;
+        selected.push({
+          filePath: allChunks[i].filePath,
+          duration: chunkDuration,
+          start: chunkTrimStart,
+          end: chunkTrimEnd,
+        });
       }
 
-      accumulated += durations[i];
+      accumulated += chunkDuration;
     }
 
-    // 🔹 CONCAT PHASE
-    const concatFileContent = segmentFiles
-      .map((file) => `file '${file}'`)
-      .join("\n");
+    return selected;
+  };
 
-    await ffmpeg.writeFile(
-      "concat.txt",
-      new TextEncoder().encode(concatFileContent),
-    );
+  const handleTrimAndMerge = async () => {
+    if (durations.length === 0) return;
 
-    await ffmpeg.exec([
-      "-f",
-      "concat",
-      "-safe",
-      "0",
-      "-i",
-      "concat.txt",
-      "-c",
-      "copy",
-      "final.mp4",
-    ]);
+    try {
+      setLoading(true);
 
-    setLoading(false);
+      const response = await fetch(
+        "https://ffmpeg-backend-xre2.onrender.com/api/trim",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            start: values[0],
+            end: values[1],
+            chunks: getTrimmedChunks(),
+          }),
+        },
+      );
 
-    const data = await ffmpeg.readFile("final.mp4");
+      if (!response.ok) {
+        throw new Error("Failed to trim video");
+      }
 
-    const blob = new Blob([new Uint8Array(data as Uint8Array)], {
-      type: "video/mp4",
-    });
-    const url = URL.createObjectURL(blob);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "merged-trimmed-video.mp4";
-    a.click();
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "merged-trimmed-video.mp4";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
 
-    URL.revokeObjectURL(url);
-
-    setTimeout(() => {
-      cleanupFiles(segmentFiles, videoSources.length);
-    }, 0);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Trim API error:", error);
+      alert("Failed to process video");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div style={{ padding: 30, maxWidth: 900 }}>
       <h2 className="text-xl font-bold">Multi Video Trimmer</h2>
 
-      {durations.length > 0 && (
+      {allChunks.length > 0 && (
         <>
           <div className="relative group mt-5 h-125">
-            <video
+            <Video
               ref={videoRef}
               src={allChunks[currentIndex]?.filePath}
-              width="100%"
+              
               playsInline
+              controls={false}
               className="w-full rounded-lg h-125 object-cover"
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
@@ -971,9 +920,7 @@ export default function VideoMerge() {
                           draggable={false}
                         />
                       ) : (
-                        <div
-                          className="w-full h-full bg-linear-to-r from-gray-800 via-gray-700 to-gray-800 bg-size-[200%_100%] animate-[pulse_1.2s_infinite]"
-                        />
+                        <div className="w-full h-full bg-linear-to-r from-gray-800 via-gray-700 to-gray-800 bg-size-[200%_100%] animate-[pulse_1.2s_infinite]" />
                       )}
                     </div>
                   );
